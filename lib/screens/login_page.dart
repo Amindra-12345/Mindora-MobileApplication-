@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme/mindora_colors.dart';
+import 'register.dart';
+import 'forgotpassword.dart';
 
 class LoginPage extends StatelessWidget {
   const LoginPage({super.key});
@@ -8,13 +10,16 @@ class LoginPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      //appBar: AppBar(leading: const BackButton()),
       backgroundColor: MindoraColors.background,
       body: SafeArea(
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
+
             child: Column(
               mainAxisSize: MainAxisSize.min,
+
               children: [
                 const Text(
                   'Mindora',
@@ -30,24 +35,7 @@ class LoginPage extends StatelessWidget {
                   style: TextStyle(color: MindoraColors.muted),
                 ),
                 const SizedBox(height: 15),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      child: ElevatedButton(
-                        onPressed: () {},
-                        child: Text("Login"),
-                      ),
-                    ),
-                    const SizedBox(width: 18),
-                    Container(
-                      child: ElevatedButton(
-                        onPressed: () {},
-                        child: Text("Register"),
-                      ),
-                    ),
-                  ],
-                ),
+
                 const SizedBox(height: 15),
                 const TextField(
                   decoration: InputDecoration(
@@ -64,13 +52,6 @@ class LoginPage extends StatelessWidget {
                   ),
                 ),
 
-                TextButton(
-                  onPressed: () {},
-                  child: const Text(
-                    'Forgot Password',
-                    style: TextStyle(color: MindoraColors.muted),
-                  ),
-                ),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
@@ -93,6 +74,46 @@ class LoginPage extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "Don't have Account?",
+                      style: TextStyle(color: MindoraColors.text),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RegisterPage(),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        "Register Now",
+                        style: TextStyle(
+                          color: Color.fromARGB(255, 227, 128, 92),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const Forgotpassword(),
+                      ),
+                    );
+                  },
+                  child: const Text(
+                    "Forgot Password",
+                    style: TextStyle(color: MindoraColors.text),
+                  ),
                 ),
               ],
             ),
