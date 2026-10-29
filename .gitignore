@@ -46,3 +46,10 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/

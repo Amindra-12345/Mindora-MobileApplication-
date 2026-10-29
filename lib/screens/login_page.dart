@@ -1,11 +1,28 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../theme/mindora_colors.dart';
 import 'register.dart';
 import 'forgotpassword.dart';
 
-class LoginPage extends StatelessWidget {
+class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
+
+  @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+
+  final FlutterSecureStorage secureStorage = const FlutterSecureStorage();
+
+  bool obscure = true;
+  bool isLoading = false;
 
   InputDecoration _fieldDecoration({
     required String hint,
@@ -33,11 +50,107 @@ class LoginPage extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    bool obscure = true;
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
 
+  Future<void> login() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your email and password')),
+      );
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://10.0.2.2:5000/api/auth/login'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'email': email, 'password': password}),
+      );
+
+      dynamic data;
+
+      try {
+        data = jsonDecode(response.body);
+      } catch (_) {
+        data = <String, dynamic>{};
+      }
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final token = data is Map ? data['token'] : null;
+
+        if (token == null || token.toString().isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Login succeeded, but the server did not return a token.',
+              ),
+            ),
+          );
+          return;
+        }
+
+        await secureStorage.write(key: 'jwt_token', value: token.toString());
+        debugPrint('JWT TEST: Login function reached token section');
+        final protectedResponse = await http.get(
+          Uri.parse('http://10.0.2.2:5000/api/auth/protected'),
+          headers: {'Authorization': 'Bearer ${token.toString()}'},
+        );
+
+        debugPrint('Protected API status: ${protectedResponse.statusCode}');
+        debugPrint('Protected API response: ${protectedResponse.body}');
+
+        if (!mounted) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Login successful!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Your teammate's Home Screen can be opened here later.
+      } else {
+        final message = data is Map ? data['message']?.toString() : null;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message ?? 'Login failed. Please try again.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Cannot connect to server. Check that the backend is running.',
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      //appBar: AppBar(leading: const BackButton()),
       backgroundColor: MindoraColors.background,
       body: Container(
         decoration: BoxDecoration(
@@ -52,7 +165,6 @@ class LoginPage extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // Decorative soft circles (green + gold)
             Positioned(
               top: -70,
               right: -50,
@@ -77,7 +189,6 @@ class LoginPage extends StatelessWidget {
                 ),
               ),
             ),
-
             SafeArea(
               child: Center(
                 child: SingleChildScrollView(
@@ -85,7 +196,7 @@ class LoginPage extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Logo badge with gold ring
+                      // Mindora logo badge
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
@@ -133,7 +244,6 @@ class LoginPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Gold accent line
                       Container(
                         width: 48,
                         height: 3,
@@ -153,7 +263,7 @@ class LoginPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 28),
 
-                      // Card
+                      // Login card
                       Container(
                         width: double.infinity,
                         constraints: const BoxConstraints(maxWidth: 420),
@@ -173,8 +283,11 @@ class LoginPage extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            // Email
                             TextField(
+                              controller: emailController,
                               keyboardType: TextInputType.emailAddress,
+                              autofillHints: const [AutofillHints.email],
                               style: const TextStyle(color: MindoraColors.text),
                               cursorColor: MindoraColors.primary,
                               decoration: _fieldDecoration(
@@ -183,30 +296,32 @@ class LoginPage extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            StatefulBuilder(
-                              builder: (context, setState) {
-                                return TextField(
-                                  obscureText: obscure,
-                                  style: const TextStyle(
-                                    color: MindoraColors.text,
+
+                            // Password
+                            TextField(
+                              controller: passwordController,
+                              obscureText: obscure,
+                              autofillHints: const [AutofillHints.password],
+                              style: const TextStyle(color: MindoraColors.text),
+                              cursorColor: MindoraColors.primary,
+                              decoration: _fieldDecoration(
+                                hint: 'Password',
+                                icon: Icons.lock_outline_rounded,
+                                suffix: IconButton(
+                                  icon: Icon(
+                                    obscure
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    color: MindoraColors.muted,
                                   ),
-                                  cursorColor: MindoraColors.primary,
-                                  decoration: _fieldDecoration(
-                                    hint: 'Password',
-                                    icon: Icons.lock_outline_rounded,
-                                    suffix: IconButton(
-                                      icon: Icon(
-                                        obscure
-                                            ? Icons.visibility_off_outlined
-                                            : Icons.visibility_outlined,
-                                        color: MindoraColors.muted,
-                                      ),
-                                      onPressed: () =>
-                                          setState(() => obscure = !obscure),
-                                    ),
-                                  ),
-                                );
-                              },
+                                  onPressed: () {
+                                    setState(() {
+                                      obscure = !obscure;
+                                    });
+                                  },
+                                ),
+                              ),
+                              onSubmitted: (_) => login(),
                             ),
 
                             // Forgot password
@@ -223,7 +338,7 @@ class LoginPage extends StatelessWidget {
                                   );
                                 },
                                 child: const Text(
-                                  "Forgot Password",
+                                  'Forgot Password',
                                   style: TextStyle(
                                     color: MindoraColors.primary,
                                     fontSize: 13,
@@ -234,7 +349,7 @@ class LoginPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 4),
 
-                            // Green gradient login button
+                            // Login button
                             SizedBox(
                               width: double.infinity,
                               height: 54,
@@ -260,23 +375,31 @@ class LoginPage extends StatelessWidget {
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.transparent,
+                                    disabledBackgroundColor: Colors.transparent,
                                     shadowColor: Colors.transparent,
                                     foregroundColor: MindoraColors.surface,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
                                   ),
-                                  onPressed: () {
-                                    // Connect login later.
-                                  },
-                                  child: const Text(
-                                    'Log in',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
+                                  onPressed: isLoading ? null : login,
+                                  child: isLoading
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                            color: MindoraColors.surface,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Log in',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
                                 ),
                               ),
                             ),
@@ -304,52 +427,52 @@ class LoginPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 20),
 
-                            // Google button
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: SizedBox(
-                                    height: 52,
-                                    child: OutlinedButton.icon(
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: MindoraColors.text,
-                                        backgroundColor:
-                                            MindoraColors.background,
-                                        side: const BorderSide(
-                                          color: MindoraColors.gold,
-                                          width: 1.2,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
-                                        ),
-                                      ),
-                                      onPressed: () {
-                                        // Connect Google login later.
-                                      },
-                                      icon: const Icon(
-                                        Icons.login,
-                                        color: MindoraColors.gold,
-                                      ),
-                                      label: const Text('Log in with Google'),
-                                    ),
+                            // Google login placeholder
+                            SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: MindoraColors.text,
+                                  backgroundColor: MindoraColors.background,
+                                  side: const BorderSide(
+                                    color: MindoraColors.gold,
+                                    width: 1.2,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
                                   ),
                                 ),
-                              ],
+                                onPressed: () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Google sign-in is not connected yet.',
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.login,
+                                  color: MindoraColors.gold,
+                                ),
+                                label: const Text('Log in with Google'),
+                              ),
                             ),
                           ],
                         ),
                       ),
                       const SizedBox(height: 20),
 
-                      // Register
+                      // Register link
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text(
-                            "Don't have Account?",
-                            style: TextStyle(color: MindoraColors.text),
+                          const Flexible(
+                            child: Text(
+                              "Don't have Account?",
+                              style: TextStyle(color: MindoraColors.text),
+                            ),
                           ),
                           TextButton(
                             onPressed: () {
@@ -361,7 +484,7 @@ class LoginPage extends StatelessWidget {
                               );
                             },
                             child: const Text(
-                              "Register Now",
+                              'Register Now',
                               style: TextStyle(
                                 color: MindoraColors.gold,
                                 fontWeight: FontWeight.w800,

@@ -1,10 +1,26 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:mindora/screens/login_page.dart';
 
 import '../theme/mindora_colors.dart';
 
-class RegisterPage extends StatelessWidget {
+class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
+
+  @override
+  State<RegisterPage> createState() => _RegisterPageState();
+}
+
+class _RegisterPageState extends State<RegisterPage> {
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final confirmPasswordController = TextEditingController();
+
+  bool obscurePassword = true;
+  bool obscureConfirm = true;
+  bool isLoading = false;
 
   InputDecoration _fieldDecoration({
     required String hint,
@@ -32,10 +48,110 @@ class RegisterPage extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    bool obscurePassword = true;
-    bool obscureConfirm = true;
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    confirmPasswordController.dispose();
+    super.dispose();
+  }
 
+  Future<void> register() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    final confirmPassword = confirmPasswordController.text;
+
+    if (email.isEmpty || password.isEmpty || confirmPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all fields')),
+      );
+      return;
+    }
+
+    if (!email.contains('@') || !email.contains('.')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a valid email address')),
+      );
+      return;
+    }
+
+    if (password.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password must be at least 8 characters')),
+      );
+      return;
+    }
+
+    if (password != confirmPassword) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Passwords do not match')));
+      return;
+    }
+
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('http://10.0.2.2:5000/api/auth/register'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'fullName': 'Mindora User',
+          'email': email,
+          'password': password,
+        }),
+      );
+
+      dynamic decoded;
+      try {
+        decoded = jsonDecode(response.body);
+      } catch (_) {
+        decoded = <String, dynamic>{};
+      }
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+        );
+      } else {
+        final message = decoded is Map ? decoded['message']?.toString() : null;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message ?? 'Registration failed. Please try again.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot connect to server. Check your backend.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -58,7 +174,6 @@ class RegisterPage extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // Decorative soft circles (green + gold)
             Positioned(
               top: -70,
               right: -50,
@@ -83,7 +198,6 @@ class RegisterPage extends StatelessWidget {
                 ),
               ),
             ),
-
             SafeArea(
               child: Center(
                 child: SingleChildScrollView(
@@ -91,7 +205,6 @@ class RegisterPage extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Logo inside a gold ring
                       Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
@@ -132,7 +245,6 @@ class RegisterPage extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Gold accent line
                       Container(
                         width: 48,
                         height: 3,
@@ -152,7 +264,7 @@ class RegisterPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 28),
 
-                      // Card
+                      // Register form
                       Container(
                         width: double.infinity,
                         constraints: const BoxConstraints(maxWidth: 420),
@@ -172,9 +284,10 @@ class RegisterPage extends StatelessWidget {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Email
                             TextField(
+                              controller: emailController,
                               keyboardType: TextInputType.emailAddress,
+                              autofillHints: const [AutofillHints.email],
                               style: const TextStyle(color: MindoraColors.text),
                               cursorColor: MindoraColors.primary,
                               decoration: _fieldDecoration(
@@ -185,65 +298,59 @@ class RegisterPage extends StatelessWidget {
                             const SizedBox(height: 16),
 
                             // Password
-                            StatefulBuilder(
-                              builder: (context, setState) {
-                                return TextField(
-                                  obscureText: obscurePassword,
-                                  style: const TextStyle(
-                                    color: MindoraColors.text,
+                            TextField(
+                              controller: passwordController,
+                              obscureText: obscurePassword,
+                              autofillHints: const [AutofillHints.newPassword],
+                              style: const TextStyle(color: MindoraColors.text),
+                              cursorColor: MindoraColors.primary,
+                              decoration: _fieldDecoration(
+                                hint: 'Password',
+                                icon: Icons.lock_outline_rounded,
+                                suffix: IconButton(
+                                  icon: Icon(
+                                    obscurePassword
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    color: MindoraColors.muted,
                                   ),
-                                  cursorColor: MindoraColors.primary,
-                                  decoration: _fieldDecoration(
-                                    hint: 'Password',
-                                    icon: Icons.lock_outline_rounded,
-                                    suffix: IconButton(
-                                      icon: Icon(
-                                        obscurePassword
-                                            ? Icons.visibility_off_outlined
-                                            : Icons.visibility_outlined,
-                                        color: MindoraColors.muted,
-                                      ),
-                                      onPressed: () => setState(
-                                        () =>
-                                            obscurePassword = !obscurePassword,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
+                                  onPressed: () {
+                                    setState(() {
+                                      obscurePassword = !obscurePassword;
+                                    });
+                                  },
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 16),
 
                             // Confirm password
-                            StatefulBuilder(
-                              builder: (context, setState) {
-                                return TextField(
-                                  obscureText: obscureConfirm,
-                                  style: const TextStyle(
-                                    color: MindoraColors.text,
+                            TextField(
+                              controller: confirmPasswordController,
+                              obscureText: obscureConfirm,
+                              style: const TextStyle(color: MindoraColors.text),
+                              cursorColor: MindoraColors.primary,
+                              decoration: _fieldDecoration(
+                                hint: 'Confirm Password',
+                                icon: Icons.lock_reset_rounded,
+                                suffix: IconButton(
+                                  icon: Icon(
+                                    obscureConfirm
+                                        ? Icons.visibility_off_outlined
+                                        : Icons.visibility_outlined,
+                                    color: MindoraColors.muted,
                                   ),
-                                  cursorColor: MindoraColors.primary,
-                                  decoration: _fieldDecoration(
-                                    hint: 'Confirm Password',
-                                    icon: Icons.lock_reset_rounded,
-                                    suffix: IconButton(
-                                      icon: Icon(
-                                        obscureConfirm
-                                            ? Icons.visibility_off_outlined
-                                            : Icons.visibility_outlined,
-                                        color: MindoraColors.muted,
-                                      ),
-                                      onPressed: () => setState(
-                                        () => obscureConfirm = !obscureConfirm,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
+                                  onPressed: () {
+                                    setState(() {
+                                      obscureConfirm = !obscureConfirm;
+                                    });
+                                  },
+                                ),
+                              ),
                             ),
                             const SizedBox(height: 24),
 
-                            // Green gradient create account button
+                            // Create Account button
                             SizedBox(
                               width: double.infinity,
                               height: 54,
@@ -269,30 +376,31 @@ class RegisterPage extends StatelessWidget {
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.transparent,
+                                    disabledBackgroundColor: Colors.transparent,
                                     shadowColor: Colors.transparent,
                                     foregroundColor: MindoraColors.surface,
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
                                   ),
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) => const LoginPage(),
-                                      ),
-                                    );
-
-                                    // Connect login later.
-                                  },
-                                  child: const Text(
-                                    'Create Account',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
+                                  onPressed: isLoading ? null : register,
+                                  child: isLoading
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2.5,
+                                            color: MindoraColors.surface,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Create Account',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
                                 ),
                               ),
                             ),
@@ -320,39 +428,37 @@ class RegisterPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 20),
 
-                            // Google button
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: SizedBox(
-                                    height: 52,
-                                    child: OutlinedButton.icon(
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: MindoraColors.text,
-                                        backgroundColor:
-                                            MindoraColors.background,
-                                        side: const BorderSide(
-                                          color: MindoraColors.gold,
-                                          width: 1.2,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            16,
-                                          ),
-                                        ),
-                                      ),
-                                      onPressed: () {
-                                        // Connect Google login later.
-                                      },
-                                      icon: const Icon(
-                                        Icons.login,
-                                        color: MindoraColors.gold,
-                                      ),
-                                      label: const Text('Log in with Google'),
-                                    ),
+                            // Google login placeholder
+                            SizedBox(
+                              width: double.infinity,
+                              height: 52,
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: MindoraColors.text,
+                                  backgroundColor: MindoraColors.background,
+                                  side: const BorderSide(
+                                    color: MindoraColors.gold,
+                                    width: 1.2,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
                                   ),
                                 ),
-                              ],
+                                onPressed: () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Google sign-in is not connected yet.',
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.login,
+                                  color: MindoraColors.gold,
+                                ),
+                                label: const Text('Log in with Google'),
+                              ),
                             ),
                           ],
                         ),
@@ -363,13 +469,15 @@ class RegisterPage extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text(
-                            "Already Have An Account?",
-                            style: TextStyle(color: MindoraColors.text),
+                          const Flexible(
+                            child: Text(
+                              'Already Have An Account?',
+                              style: TextStyle(color: MindoraColors.text),
+                            ),
                           ),
                           TextButton(
                             onPressed: () {
-                              Navigator.push(
+                              Navigator.pushReplacement(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => const LoginPage(),
@@ -377,7 +485,7 @@ class RegisterPage extends StatelessWidget {
                               );
                             },
                             child: const Text(
-                              "Login",
+                              'Login',
                               style: TextStyle(
                                 color: MindoraColors.gold,
                                 fontWeight: FontWeight.w800,
